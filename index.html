@@ -1,0 +1,84 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Login Page</title>
+</head>
+<body>
+  <h2>사용자 로그인</h2>
+  <form id="loginForm">
+    <label>닉네임: <input type="text" id="nickname" required></label><br><br>
+    <label>지갑 주소: <input type="text" id="wallet" required></label><br><br>
+    <label>링크 입력: <input type="text" id="userLink" placeholder="https://example.com"></label><br><br>
+    <button type="submit">Send</button>
+  </form>
+
+<!--HTML에 승인 대기 메시지 영역 추가-->
+<div id="waitingMessage" style="display:none; padding:10px; background:#ffffcc; border:1px solid #ccc; margin-top:20px;">
+  승인 대기중입니다. 잠시만 기다려주세요...
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+
+  const form = document.getElementById('loginForm');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const nickname = document.getElementById('nickname').value.trim();
+    const wallet = document.getElementById('wallet').value.trim();
+
+    if (!nickname || !wallet) {
+      alert('닉네임과 지갑 주소를 입력하세요.');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/registerUser', {
+        method: 'POST',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nickname, wallet })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.status === 'success') {
+        socket.emit('registerUser', { wallet, nickname }); // 서버에 소켓 등록
+        socket.emit('requestEntry', { wallet, nickname });  // 승인 요청 시작
+        document.getElementById('waitingMessage').style.display = 'block';
+      } else if (data.status === 'existing') {
+        alert('이미 등록된 사용자입니다.');
+        // 필요 시 바로 페이지 이동 처리
+      } else {
+        alert('사용자 등록 실패: ' + (data.message || '알 수 없는 오류'));
+      }
+    } catch (e) {
+      alert('통신 오류: ' + e.message);
+    }
+  });
+
+  // 승인 완료 이벤트 처리
+  socket.on('verificationCompleted', ({ approved }) => {
+    console.log("📩 서버로부터 verificationCompleted 이벤트 수신:", approved);
+    if (approved) {
+      alert('입장 승인이 완료되었습니다! 페이지를 이동합니다.');
+
+      const nickname = document.getElementById('nickname').value.trim();
+      const wallet = document.getElementById('wallet').value.trim();
+      const userLink = document.getElementById('userLink').value.trim();
+
+      const query = `nickname=${encodeURIComponent(nickname)}&wallet=${encodeURIComponent(wallet)}&link=${encodeURIComponent(userLink)}`;
+      console.log(`🌐 page2.html로 이동: ${query}`);
+
+      window.location.href = `page2.html?${query}`;
+    } else {
+      alert('입장 거부되었습니다. 다시 시도해주세요.');
+    }
+  });
+</script>
+
+
+</body>
+</html>

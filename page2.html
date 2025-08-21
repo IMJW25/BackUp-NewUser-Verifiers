@@ -1,0 +1,171 @@
+<!--page2.html-->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>채팅 & 링크</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #chatBox { border: 1px solid #ccc; padding: 10px; width: 100%; height: 300px; overflow-y: auto; margin-bottom: 10px; }
+    #messageInput { width: 80%; padding: 5px; }
+    #sendBtn { padding: 5px 10px; }
+    .message { margin-bottom: 5px; }
+    .from { font-weight: bold; margin-right: 5px; }
+  </style>
+</head>
+<body>
+  <h1>채팅 & 링크 페이지</h1>
+
+  <div>
+    <label>닉네임: <input type="text" id="nickname" placeholder="닉네임 입력"></label>
+  </div>
+
+  <h2>채팅</h2>
+  <div id="chatBox"></div>
+  <input type="text" id="messageInput" placeholder="메시지 입력">
+  <button id="sendBtn">Send</button>
+
+  <script>
+    const socket = io();
+
+    socket.on('connect', () => {
+      socket.emit('registerValidator', { wallet: myWallet, nickname: nicknameInput.value });
+      console.log('myWallet 값:', myWallet);
+      console.log(`🔔 registerValidator 이벤트 전송: 지갑주소 ${myWallet}, 닉네임 ${nicknameInput.value}`);
+      console.log('myWallet 값:', myWallet);
+    });
+
+    socket.emit('requestPendingVerifications'); 
+    //페이지 로드 또는 새로고침 시 서버에 현재 승인 대기 사용자 목록 요청 보내는 코드 추가
+
+    const chatBox = document.getElementById('chatBox');
+    const messageInput = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const nicknameInput = document.getElementById('nickname');
+
+    // ====== index.html에서 전달된 nickname/wallet 처리 ======
+    const params = new URLSearchParams(window.location.search);
+    const myWallet = params.get('wallet');  // 검증자 본인 지갑주소 동적 할당
+    console.log('myWallet 값:', myWallet);
+
+    if (!myWallet) {
+      alert('지갑주소 없어서 기능 제한될 수 있습니다.');
+    }
+    const nickname = params.get('nickname');
+    const wallet = params.get('wallet');
+
+    // 닉네임 input에 자동 채우기
+    if (nickname) nicknameInput.value = nickname;
+
+    // 서버에 사용자 등록
+    if (nickname && wallet) {
+      // socket.emit('registerUser', { wallet: wallet, nickname });
+      // // 신규 사용자 입장 검증 요청 보내기
+      // socket.emit('requestEntry', { wallet, nickname });
+    }
+
+    // 승인 대기 중 알림
+    socket.on('waitingForApproval', () => {
+      alert('신규 사용자 승인 대기 중입니다. 검증자들의 승인을 기다려주세요.');
+      // UI 제어가 필요하면 여기서 처리
+    });
+
+    // 승인 완료/거부 여부 처리
+    let movedOnVerification = false;
+
+    socket.on('verificationCompleted', ({ approved }) => {
+      if (sessionStorage.getItem('movedOnVerification')) return; // 이미 처리했으면 무시
+      sessionStorage.setItem('movedOnVerification', 'true');    // 최초 처리 표시
+
+      if (approved) {
+       alert('입장 승인이 완료되었습니다!');
+        // 페이지 이동을 새로고침 없이 진행하거나, 이동 전에 상태 저장
+        setTimeout(() => {
+         window.location.href = `page2.html?nickname=${encodeURIComponent(nicknameInput.value)}&wallet=${encodeURIComponent(wallet)}`;
+        }, 500);
+     } else {
+        alert('입장 거부되었습니다. 다시 시도해주세요.');
+      }
+    });
+
+
+
+    // 기존 채팅 로그 수신
+    socket.on('chatLogs', (logs) => {
+      chatBox.innerHTML = ''; 
+      logs.forEach(log => addMessage(log.fromUser, log.message));
+      chatBox.scrollTop = chatBox.scrollHeight;
+    });
+
+    // 새 메시지 수신
+    socket.on('receiveMessage', ({ fromUser, message }) => {
+      addMessage(fromUser, message);
+    });
+
+    // 승인 대기 목록 수신 및 승인 요청 처리
+    socket.on('verificationRequested', ({ candidate, nickname, message, validators }) => {
+      if (!myWallet) return;
+      if (!Array.isArray(validators)) {
+        console.warn('validators 필드가 없습니다:', validators);
+        return;
+      }
+      if (!validators.includes(myWallet)) return;
+
+      const approve = confirm(`새로운 사용자 ${nickname} 참가 요청이 있습니다. 승인하시겠습니까?`);
+      if (approve) {
+        socket.emit('vote', { candidate, verifier: myWallet, approve: true });
+        console.log('myWallet 값:', myWallet);
+      } else {
+        socket.emit('vote', { candidate, verifier: myWallet, approve: false });
+        console.log('myWallet 값:', myWallet);
+      }
+    });
+
+
+    function addMessage(fromUser, message) {
+      const div = document.createElement('div');
+      div.classList.add('message');
+
+      const urlRegex = /(https?:\/\/[^\s]+)/g;
+      const formattedMessage = message.replace(urlRegex, url => 
+        `<a href="#" class="chat-link" data-url="${url}">${url}</a>`
+      );
+
+      div.innerHTML = `<span class="from">${fromUser}:</span> ${formattedMessage}`;
+      chatBox.appendChild(div);
+      div.scrollIntoView();
+
+      // 링크 클릭 이벤트 등록
+      div.querySelectorAll('.chat-link').forEach(link => {
+        link.addEventListener('click', e => {
+          e.preventDefault();
+          const url = link.dataset.url;
+          socket.emit('linkClicked', { fromUser, link: url });
+          console.log('링크 클릭:', fromUser, url);
+        });
+      });
+    }
+
+    // 메시지 전송
+    sendBtn.addEventListener('click', () => {
+      const fromUser = nicknameInput.value.trim();
+      const message = messageInput.value.trim();
+
+      if (!fromUser || !message) {
+        alert('닉네임과 메시지를 입력하세요.');
+        return;
+      }
+
+      const toUser = ''; // 필요시 실제 수신자 닉네임 할당
+      socket.emit('sendMessage', { fromUser, message, toUser });
+      messageInput.value = '';
+    });
+
+    // 엔터키 전송
+    messageInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendBtn.click();
+    });
+  </script>
+</body>
+</html>
