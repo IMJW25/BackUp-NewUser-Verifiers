@@ -231,11 +231,9 @@ socket.on('linkClicked', async ({ fromUser, toUser, link }) => {
 });
 
   // 신규 사용자 입장 요청 시 검증 절차 시작
-socket.on('requestEntry', async ({ wallet, nickname }) => {
+socket.on('requestEntry', async ({ wallet, nickname, link }) => {
   const candidate = wallet;
-  if (pendingVerifications[candidate]) return; // 중복 대기 방지
-  
-  // 완전 일치 여부 확인
+  if (pendingVerifications[candidate]) return;
   const isExistingUser = Array.from(nameDB.entries()).some(([w, n]) => w === wallet && n === nickname);
 
   if (isExistingUser) {
@@ -248,39 +246,30 @@ socket.on('requestEntry', async ({ wallet, nickname }) => {
     return;
   }
 
-  // 신규 사용자: 점수 재계산 및 검증자 선정
   await calcConfirmScores();
   validators = selectVerifiers();
 
-  // pendingVerifications 초기화
+  // 링크를 pendingVerifications에 기록
   pendingVerifications[candidate] = {
     validators: validators.map(v => v.id),
     votes: {},
     nickname,
-    link: ''
+    link // 링크 추가!
   };
 
-  // 검증자에게 승인 요청 및 알림 메시지 전송
+  // 검증자에게 승인 요청 보낼 때 link 포함
   for (const vAddr of pendingVerifications[candidate].validators) {
     const vSocketId = validatorSockets.get(vAddr);
     if (vSocketId) {
       io.to(vSocketId).emit('verificationRequested', {
         candidate,
         nickname,
-        message: `${nickname} (${candidate}) 님이 입장 요청하며 링크를 공유하며 들어오고 싶어합니다.`,
+        link, // 링크 추가!
         validators: pendingVerifications[candidate].validators
       });
-      console.log(`신규 사용자 ${candidate} 대해 검증자 ${vAddr} 승인 요청 이벤트 전송`);
-    } else {
-      console.log(`검증자 ${vAddr} 소켓 ID 없음`);
     }
   }
-
-  // 후보자에게 대기 메시지 전송
-  const socketInfo = userSockets.get(candidate);
-  if (socketInfo) {
-    io.to(socketInfo.socketId).emit('waitingForApproval');
-  }
+  // 후보자에게 대기 메시지 등은 그대로
 });
 
 
