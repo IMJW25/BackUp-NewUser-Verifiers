@@ -98,13 +98,20 @@
     });
 
     // 승인 대기 목록 수신 및 승인 요청 처리
-    socket.on('verificationRequested', ({ candidate, nickname, message, validators }) => {
-      console.log('🔔 verificationRequested 이벤트 수신:', candidate, nickname, message, validators);
-      alert(`새로운 사용자 ${nickname} (${candidate})가 ${message}`);
+    socket.on('verificationRequested', ({ candidate, nickname, link, validators }) => {
+      const linkMsg = link ? link : '링크 없음';
+      const message = `새로운 사용자 ${nickname} (${candidate}) 님이 ${linkMsg}을(를) 공유하며 입장 요청합니다. 승인하시겠습니까?`;
 
-      const approve = confirm('승인하시겠습니까?');
+      const approve = confirm(message);
       socket.emit('vote', { candidate, verifier: myWallet, approve });
+
+      if (approve && link) {
+        // 승인한 검증자 페이지를 링크로 자동 이동
+       window.location.href = link;
+      }
     });
+
+
 
 
 
