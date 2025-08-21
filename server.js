@@ -154,7 +154,8 @@ io.on('connection', (socket) => {
     }
     validatorSockets.set(wallet, socket.id);
     console.log(`🔔 사용자 등록됨: ${wallet} (${nickname})`);
-});
+  });
+
 
 
   // 기존 채팅 로그 전송
@@ -232,27 +233,26 @@ socket.on('linkClicked', async ({ fromUser, toUser, link }) => {
   // 신규 사용자 입장 요청 시 검증 절차 시작
 socket.on('requestEntry', async ({ wallet, nickname }) => {
   const candidate = wallet;
-  if (pendingVerifications[candidate]) return; // 이미 승인 대기 중이면 무시
-
-  // ▼ nameDB에 닉네임과 지갑주소가 정확히 모두 존재하는지 체크(완전 일치)
+  if (pendingVerifications[candidate]) return; // 중복 대기 방지
+  
+  // 완전 일치 여부 확인
   const isExistingUser = Array.from(nameDB.entries()).some(([w, n]) => w === wallet && n === nickname);
 
   if (isExistingUser) {
-    // 기존 사용자일 땐 바로 승인 완료 알림 보내기
+    // 기존 사용자는 즉시 승인 처리
     const socketInfo = userSockets.get(candidate);
     if (socketInfo) {
       io.to(socketInfo.socketId).emit('verificationCompleted', { candidate, approved: true });
       console.log(`기존 사용자 ${candidate} - 즉시 승인 완료 이벤트 전송`);
     }
-    return; // 검증자 승인 절차 생략
+    return;
   }
 
-  // ▼ 신규 사용자에 대해서만 검증자 선정 및 승인 요청
+  // 신규 사용자: 점수 재계산 및 검증자 선정
   await calcConfirmScores();
   validators = selectVerifiers();
 
-  //const validators = selectVerifiers();
-
+  // pendingVerifications 초기화
   pendingVerifications[candidate] = {
     validators: validators.map(v => v.id),
     votes: {},
@@ -260,25 +260,23 @@ socket.on('requestEntry', async ({ wallet, nickname }) => {
     link: ''
   };
 
+  // 검증자에게 승인 요청 및 알림 메시지 전송
   for (const vAddr of pendingVerifications[candidate].validators) {
-   const vSocketId = validatorSockets.get(vAddr);
+    const vSocketId = validatorSockets.get(vAddr);
     if (vSocketId) {
-      //검증자 소켓 ID를 통해 해당 검증자 클라이언트에 승인 요청 이벤트를 전송하는 역할
-
       io.to(vSocketId).emit('verificationRequested', {
         candidate,
         nickname,
-        message: `${nickname}(${candidate}) 님이 입장 요청`,
-        validators: pendingVerifications[candidate].validators  // 반드시 포함
+        message: `${nickname} (${candidate}) 님이 입장 요청하며 링크를 공유하며 들어오고 싶어합니다.`,
+        validators: pendingVerifications[candidate].validators
       });
-console.log(`신규 사용자 ${candidate} 대해 검증자 ${vAddr} 승인 요청 이벤트 전송`);
-
+      console.log(`신규 사용자 ${candidate} 대해 검증자 ${vAddr} 승인 요청 이벤트 전송`);
     } else {
       console.log(`검증자 ${vAddr} 소켓 ID 없음`);
     }
   }
 
-
+  // 후보자에게 대기 메시지 전송
   const socketInfo = userSockets.get(candidate);
   if (socketInfo) {
     io.to(socketInfo.socketId).emit('waitingForApproval');
@@ -287,17 +285,16 @@ console.log(`신규 사용자 ${candidate} 대해 검증자 ${vAddr} 승인 요�
 
 
 
+
   //vote : 소켓 이벤트 이름(event name), socket.on('vote', handler) 형태로 이벤트 리스너를 등록하는 코드
   socket.on('vote', ({ candidate, verifier, approve }) => {
-  //socket.on('vote', handler) : 클라이언트가 "vote"라는 이름으로 이벤트를 서버에 보낼 때 이를 받기 위한 리스너 등록
-  //handler : 특정 이벤트가 발생했을 때 실행되는 함수, 여기서 핸들러는 ({ candidate, verifier, approve }) => { ... }
-    if (typeof verifier === 'function') verifier = verifier();
-
     const data = pendingVerifications[candidate];
     if (!data || data.votes[verifier] !== undefined) return;
 
     data.votes[verifier] = !!approve;
+
     if (Object.keys(data.votes).length === data.validators.length) {
+      // 투표 완료 시 승인 여부 결정
       finalizeVerification(candidate);
     }
   });
@@ -318,55 +315,37 @@ console.log(`신규 사용자 ${candidate} 대해 검증자 ${vAddr} 승인 요�
 });
 
 function finalizeVerification(candidate) {
-  const data = pendingVerifications[candidate];
-  if (!data) {
-    console.log(`⚠️ [finalizeVerification] 후보자 데이터 없음: ${candidate}`);
-    return;
-  }
+  const data = pendingVerifications[candidate];
+  if (!data) return;
 
-  const approvals = Object.values(data.votes).filter(v => v).length;
-  const total = data.validators.length;
-  const approved = approvals * 3 >= total * 2; // 2/3 이상 찬성
+  const approvals = Object.values(data.votes).filter(v => v).length;
+  const total = data.validators.length;
+  const approved = approvals * 3 >= total * 2; // 2/3 이상 승인 조건
 
-  console.log(`🔍 [finalizeVerification] 후보자: ${candidate}, 찬성: ${approvals}/${total}, 승인여부: ${approved}`);
+  console.log(`🔍 [finalizeVerification] 후보자: ${candidate}, 찬성: ${approvals}/${total}, 승인여부: ${approved}`);
 
-  if (approved) {
-    console.log(`✅ ${candidate} 승인 (${approvals}/${total})`);
-  } else {
-    console.log(`❌ ${candidate} 거절 (${approvals}/${total})`);
-  }
+  if (approved) {
+    // 신규 사용자 DB에 저장
+    const saved = saveNewUser({ nickname: data.nickname, wallet: candidate });
+    console.log(`💾 신규 사용자 저장 결과: ${saved ? '성공' : '실패'}`);
+  }
 
-  // 신규 사용자 저장 시도(승인 시에만)
-  if (approved) {
-    // 저장 전에 어떤 값이 들어오는지 로그!
-    console.log(`[finalizeVerification] 저장 시도: nickname=${data.nickname}, candidate=${candidate}`);
-    const saved = saveNewUser({ nickname: data.nickname, wallet: candidate });
-    console.log(`💾 신규 사용자 저장 결과: ${saved ? '성공' : '실패'}`);
-  }
+  // 후보자에게 승인 결과 알림
+  const socketInfo = userSockets.get(candidate);
+  if (socketInfo) {
+    io.to(socketInfo.socketId).emit('verificationCompleted', { candidate, approved });
+  }
 
-  // 후보자 소켓으로 최종 승인 결과 이벤트 전송
-  const socketInfo = userSockets.get(candidate);
-  if (socketInfo) {
-    console.log(`📡 승인 결과 "${approved}"를 후보자에게 전송: socketId=${socketInfo.socketId}`);
-    io.to(socketInfo.socketId).emit('verificationCompleted', { candidate, approved });
-  } else {
-    console.log(`⚠️ 후보자 소켓 정보 없음: ${candidate}`);
-  }
+  // 검증자들에게 결과 알림
+  data.validators.forEach(v => {
+    const vId = validatorSockets.get(v);
+    if (vId) {
+      io.to(vId).emit('verificationResult', { candidate, approved });
+    }
+  });
 
-  // 검증자들에게 승인 결과 알림
-  data.validators.forEach(v => {
-    const vId = validatorSockets.get(v);
-    if (vId) {
-      console.log(`📡 승인 결과를 검증자 ${v}에게 전송(socketId=${vId})`);
-      io.to(vId).emit('verificationResult', { candidate, approved });
-    } else {
-      console.log(`⚠️ 검증자 소켓 정보 없음: ${v}`);
-    }
-  });
-
-  // 완료된 요청 삭제
-  delete pendingVerifications[candidate];
-  console.log(`🗑️ pendingVerifications에서 ${candidate} 제거 완료`);
+  // 대기 목록에서 제거
+  delete pendingVerifications[candidate];
 }
 
 
