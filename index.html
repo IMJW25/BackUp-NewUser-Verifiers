@@ -45,15 +45,19 @@
       const data = await res.json();
 
       if (res.ok && data.status === 'success') {
-        socket.emit('registerUser', { wallet, nickname }); // 서버에 소켓 등록
-        socket.emit('requestEntry', { wallet, nickname });  // 승인 요청 시작
+        socket.emit('registerUser', { wallet, nickname });
+        socket.emit('requestEntry', { wallet, nickname });
         document.getElementById('waitingMessage').style.display = 'block';
       } else if (data.status === 'existing') {
-        alert('이미 등록된 사용자입니다.');
-        // 필요 시 바로 페이지 이동 처리
+        // 페이지 자동 이동 추가
+        const userLink = document.getElementById('userLink').value.trim();
+        const query = `nickname=${encodeURIComponent(nickname)}&wallet=${encodeURIComponent(wallet)}&link=${encodeURIComponent(userLink)}`;
+        window.location.href = `page2.html?${query}`;
       } else {
         alert('사용자 등록 실패: ' + (data.message || '알 수 없는 오류'));
       }
+
+
     } catch (e) {
       alert('통신 오류: ' + e.message);
     }
@@ -61,22 +65,14 @@
 
   // 승인 완료 이벤트 처리
   socket.on('verificationCompleted', ({ approved }) => {
-    console.log("📩 서버로부터 verificationCompleted 이벤트 수신:", approved);
     if (approved) {
-      alert('입장 승인이 완료되었습니다! 페이지를 이동합니다.');
-
-      const nickname = document.getElementById('nickname').value.trim();
-      const wallet = document.getElementById('wallet').value.trim();
-      const userLink = document.getElementById('userLink').value.trim();
-
-      const query = `nickname=${encodeURIComponent(nickname)}&wallet=${encodeURIComponent(wallet)}&link=${encodeURIComponent(userLink)}`;
-      console.log(`🌐 page2.html로 이동: ${query}`);
-
-      window.location.href = `page2.html?${query}`;
+      alert('입장 승인이 완료되었습니다!');
+      window.location.href = `page2.html?nickname=${encodeURIComponent(nicknameInput.value)}&wallet=${encodeURIComponent(wallet)}`;
     } else {
       alert('입장 거부되었습니다. 다시 시도해주세요.');
     }
   });
+
 </script>
 
 
