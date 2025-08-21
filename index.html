@@ -45,8 +45,9 @@
       const data = await res.json();
 
       if (res.ok && data.status === 'success') {
+        const userLink = document.getElementById('userLink').value.trim();   // 링크 값 가져오기
         socket.emit('registerUser', { wallet, nickname });
-        socket.emit('requestEntry', { wallet, nickname });
+        socket.emit('requestEntry', { wallet, nickname, link: userLink });     // link 추가!!
         document.getElementById('waitingMessage').style.display = 'block';
       } else if (data.status === 'existing') {
         // 페이지 자동 이동 추가
@@ -64,14 +65,22 @@
   });
 
   // 승인 완료 이벤트 처리
+  // 승인 완료 이벤트 처리
   socket.on('verificationCompleted', ({ approved }) => {
     if (approved) {
       alert('입장 승인이 완료되었습니다!');
-      window.location.href = `page2.html?nickname=${encodeURIComponent(nicknameInput.value)}&wallet=${encodeURIComponent(wallet)}`;
+      // alert 후에 곧바로 page2.html로 이동
+      // (닉네임, 지갑, 링크 같이 이동)
+      const nickname = document.getElementById('nickname').value.trim();
+      const wallet = document.getElementById('wallet').value.trim();
+      const userLink = document.getElementById('userLink').value.trim();
+      const query = `nickname=${encodeURIComponent(nickname)}&wallet=${encodeURIComponent(wallet)}&link=${encodeURIComponent(userLink)}`;
+      window.location.href = `page2.html?${query}`;
     } else {
       alert('입장 거부되었습니다. 다시 시도해주세요.');
     }
   });
+
 
 </script>
 
