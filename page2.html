@@ -99,21 +99,18 @@
 
     // 승인 대기 목록 수신 및 승인 요청 처리
     socket.on('verificationRequested', ({ candidate, nickname, link, validators }) => {
-      const linkMsg = link ? link : '링크 없음';
-      const message = `새로운 사용자 ${nickname} (${candidate}) 님이 ${linkMsg}을(를) 공유하며 입장 요청합니다. 승인하시겠습니까?`;
-
-      const approve = confirm(message);
+     const approve = confirm(`새로운 사용자 ${nickname} (${candidate}) 님이 ${link ? link : '링크 없음'}을(를) 공유하며 입장 요청합니다. 승인하시겠습니까?`);
       socket.emit('vote', { candidate, verifier: myWallet, approve });
 
-      if (approve && link) {
-        // 승인한 검증자 페이지를 링크로 자동 이동
-       window.location.href = link;
+     if (approve && link) {
+        // 승인한 검증자인 자신이 새 사용자의 링크를 "클릭한 것"을 서버에 전달
+        socket.emit('verificationLinkClicked', {
+         fromUser: myWallet,     // 검증자
+         toUser: candidate,      // 새 사용자(지갑주소)
+         link
+       });
       }
     });
-
-
-
-
 
 
     function addMessage(fromUser, message) {
