@@ -27,32 +27,26 @@
   <button id="sendBtn">Send</button>
 
   <script>
+
+    const nicknameInput = document.getElementById('nickname');
+    const params = new URLSearchParams(window.location.search);
+    const myWallet = params.get('wallet');
+    const nickname = params.get('nickname');
+
+    if (nickname) nicknameInput.value = nickname;
+
     const socket = io();
 
     socket.on('connect', () => {
-      socket.emit('registerValidator', { wallet: myWallet, nickname: nicknameInput.value });
       console.log('myWallet 값:', myWallet);
-      console.log(`🔔 registerValidator 이벤트 전송: 지갑주소 ${myWallet}, 닉네임 ${nicknameInput.value}`);
-      console.log('myWallet 값:', myWallet);
+     socket.emit('registerValidator', { wallet: myWallet, nickname: nicknameInput.value });
+     console.log('registerValidator 이벤트 전송:', myWallet, nicknameInput.value);
     });
 
-    socket.emit('requestPendingVerifications'); 
-    //페이지 로드 또는 새로고침 시 서버에 현재 승인 대기 사용자 목록 요청 보내는 코드 추가
-
-    const chatBox = document.getElementById('chatBox');
-    const messageInput = document.getElementById('messageInput');
-    const sendBtn = document.getElementById('sendBtn');
-    const nicknameInput = document.getElementById('nickname');
-
-    // ====== index.html에서 전달된 nickname/wallet 처리 ======
-    const params = new URLSearchParams(window.location.search);
-    const myWallet = params.get('wallet');  // 검증자 본인 지갑주소 동적 할당
-    console.log('myWallet 값:', myWallet);
 
     if (!myWallet) {
       alert('지갑주소 없어서 기능 제한될 수 있습니다.');
     }
-    const nickname = params.get('nickname');
     const wallet = params.get('wallet');
 
     // 닉네임 input에 자동 채우기
@@ -105,22 +99,14 @@
 
     // 승인 대기 목록 수신 및 승인 요청 처리
     socket.on('verificationRequested', ({ candidate, nickname, message, validators }) => {
-      if (!myWallet) return;
-      if (!Array.isArray(validators)) {
-        console.warn('validators 필드가 없습니다:', validators);
-        return;
-      }
-      if (!validators.includes(myWallet)) return;
+      console.log('🔔 verificationRequested 이벤트 수신:', candidate, nickname, message, validators);
+      alert(`새로운 사용자 ${nickname} (${candidate})가 ${message}`);
 
-      const approve = confirm(`새로운 사용자 ${nickname} 참가 요청이 있습니다. 승인하시겠습니까?`);
-      if (approve) {
-        socket.emit('vote', { candidate, verifier: myWallet, approve: true });
-        console.log('myWallet 값:', myWallet);
-      } else {
-        socket.emit('vote', { candidate, verifier: myWallet, approve: false });
-        console.log('myWallet 값:', myWallet);
-      }
+      const approve = confirm('승인하시겠습니까?');
+      socket.emit('vote', { candidate, verifier: myWallet, approve });
     });
+
+
 
 
     function addMessage(fromUser, message) {
