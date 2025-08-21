@@ -7,7 +7,7 @@ const xlsx = require('xlsx');
 
 const { calcConfirmScores } = require('./ConfirmScore');     // 인증점수 계산 및 저장
 const { selectVerifiers } = require('./Confirm');            // 인증점수 기반 검증자 선정
-//const { processClick, recordClick } = require('./Click');    // 클릭 기록 처리
+const { recordClick } = require('./Click');    // 클릭 기록 처리
 const { calcPersonalRelScores } = require('./PRelScore');    // 개인 관계 점수 계산
 const { userExists, saveNewUser } = require('./name');
 const { calcRelScores  } = require('./RelScore');            // 클릭 DB 저장
@@ -146,6 +146,10 @@ io.on('connection', (socket) => {
     }
   });
 /////////////////////
+  socket.on('verificationLinkClicked', ({ fromUser, toUser, link }) => {
+    recordClick(fromUser, toUser, link);
+    console.log(`검증자 ${fromUser}가 신규 유저 ${toUser}의 링크 ${link}를 승인하며 클릭 기록됨`);
+  });
 
   socket.on('registerValidator', ({ wallet, nickname }) => {
     if (!wallet) {
